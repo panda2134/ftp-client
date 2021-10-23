@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('$events',{
     },
     onProgress (fn: (num: number) => void) {
         ipcRenderer.on('progress', (evt, num: number) => fn(num))
+    },
+    onDisconnect (fn: () => void) {
+        ipcRenderer.on('disconnect', () => { fn() })
     }
 })
 

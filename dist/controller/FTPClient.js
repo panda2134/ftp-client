@@ -55,7 +55,12 @@ class FTPClient {
             .pipe(new FTPResponseTransformer_1.default())
             .resume();
         this._controlConnection.on('connection', () => { this._state = Enum_1.ClientState.AwaitServerHello; });
-        this._controlConnection.on('close', () => { this._state = Enum_1.ClientState.Disconnected; });
+        const closeListener = () => {
+            this._state = Enum_1.ClientState.Disconnected;
+            this.emitter.emit('disconnect');
+        };
+        this._controlConnection.on('end', closeListener);
+        this._controlConnection.on('error', closeListener);
     }
     getCurrentState() {
         return this._state;
@@ -274,6 +279,7 @@ class FTPClient {
         try {
             const statInfo = await (0, promises_1.stat)(pathname); // a local pathname, absolute or relative
             if (!statInfo.isFile()) {
+                // noinspection ExceptionCaughtLocallyJS
                 throw new Error('not a file');
             }
         }

@@ -1,26 +1,27 @@
 import {IListFileInfo} from "./ListCmdParser"
 import {ClientState, DataConnectionMode} from "./Enum";
+import {IPv4Addr} from "./IPv4Addr";
 
 interface GlobalEvents {
     onRequest (fn: (verb: string, arg?: string) => void): void
     onResponse (fn: (resp: string[]) => void): void
     onLog (fn: (...args: any[]) => void): void
     onProgress (fn: (num: number) => void): void
+    onDisconnect (fn: () => void): void
 }
 
 declare global {
     interface Window {
         $invoke(channel: 'local.setPreferredMode', newMode: DataConnectionMode): Promise<void>
-
+        $invoke(channel: 'local.getPreferredMode'): Promise<DataConnectionMode>
         $invoke(channel: 'local.rmdir', dir: string): Promise<void>
         $invoke(channel: 'local.rm', path: string): Promise<void>
         $invoke(channel: 'local.mv', pathOld: string, pathNew: string): Promise<void>
-
+        $invoke(channel: 'local.getLocalIPv4Address'): Promise<IPv4Addr[]>
         $invoke(channel: 'local.getLocalDir'): Promise<string>
-
         $invoke(channel: 'local.changeLocalDir', dir: string): Promise<void>
-
         $invoke(channel: 'local.listLocalDir'): Promise<IListFileInfo[]>
+        $invoke(channel: 'local.setPortAddr', addr: string): Promise<void>
 
         $invoke(channel: 'client.getCurrentState'): Promise<ClientState>
 

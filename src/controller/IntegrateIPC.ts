@@ -1,11 +1,14 @@
-import { ipcMain, BrowserWindow } from 'electron'
-import { FTPClient } from './FTPClient'
+import {BrowserWindow, ipcMain} from 'electron'
+import {FTPClient} from './FTPClient'
 import * as fs from 'fs/promises'
 import path from 'canonical-path'
 import {IListFileInfo} from "./ListCmdParser"
 import {DataConnectionMode} from "./Enum"
+import * as os from "os";
+import {IPv4Addr} from "./IPv4Addr";
 
 let client: FTPClient | undefined = undefined
+let portAddr: string | undefined = undefined
 let mode = DataConnectionMode.PassiveConnection
 let initialized = false
 
@@ -25,17 +28,33 @@ async function listLocalDir() {
     return ret
 }
 
+function getLocalIPv4Address() {
+    const iface = os.networkInterfaces()
+    const ret: IPv4Addr[] = []
+    for (const [k, v] of Object.entries(iface)) {
+        for (const addrInfo of v) {
+            if (addrInfo.family === 'IPv4' && !addrInfo.internal) {
+                ret.push({ iface: k, addr: addrInfo.address })
+            }
+        }
+    }
+    return ret
+}
+
 export function registerIPC(win: BrowserWindow): void {
     if (initialized) return
     initialized = true
 
     ipcMain.handle('local.setPreferredMode', (event, newMode: DataConnectionMode) => { mode = newMode })
+    ipcMain.handle('local.getPreferredMode', () => mode)
     ipcMain.handle('local.getLocalDir', () => path.normalize(process.cwd()))
     ipcMain.handle('local.changeLocalDir', (event, dir: string) => { process.chdir(dir) })
     ipcMain.handle('local.listLocalDir', () => listLocalDir())
     ipcMain.handle('local.rmdir', (event, dir: string) => fs.rmdir(dir) )
     ipcMain.handle('local.rm', (event, path: string) => fs.unlink(path))
     ipcMain.handle('local.mv', (event, pathOld: string, pathNew: string) => fs.rename(pathOld, pathNew))
+    ipcMain.handle('local.getLocalIPv4Address', () => getLocalIPv4Address())
+    ipcMain.handle('local.setPortAddr', (event, addr) => { portAddr = addr })
 
     const DO_NOT_GENERATE_FOR = ['connect', 'constructor']
     for (const keyName of Object.getOwnPropertyNames(FTPClient.prototype)) {
@@ -60,8 +79,11 @@ export function registerIPC(win: BrowserWindow): void {
             }
         }
         client = new FTPClient(mode)
+        if (mode === DataConnectionMode.PortConnection && portAddr) {
+            client.activeModeIPv4Address = portAddr
+        }
         // Attach events here
-        for (const channel of ['request', 'response', 'log']) {
+        for (const channel of ['request', 'response', 'log', 'disconnect']) {
             client.emitter.on(channel, (...args) => {
                 win.webContents.send(channel, ...args)
             })

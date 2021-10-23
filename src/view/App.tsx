@@ -1,25 +1,34 @@
 import * as React from 'react'
 import {useEffect, useRef, useState} from 'react'
 import {
-    AppBar, Backdrop,
-    Box, Button, CircularProgress,
-    Container, Divider, Drawer,
-    IconButton, InputAdornment, InputBase,
-    LinearProgress, Snackbar, Stack, styled, Switch, TextField,
+    AppBar,
+    Autocomplete,
+    Box,
+    Button,
+    Container,
+    Drawer,
+    FormControlLabel,
+    FormGroup,
+    LinearProgress,
+    Stack,
+    Switch,
+    TextField,
     Toolbar,
     Typography
 } from '@mui/material'
-import { Computer, Lock, Menu, PeopleAlt} from '@mui/icons-material'
 import FileList, {IListFileInfoEx} from './FileList'
-import {ClientState} from "../controller/Enum"
+import {DataConnectionMode} from "../controller/Enum"
 import TopBar, {ConnectArgs} from './TopBar'
 import {XTerm} from "xterm-for-react"
-import { SnackbarProvider, VariantType, useSnackbar } from 'notistack'
-import {green} from "@mui/material/colors";
+import {useSnackbar} from 'notistack'
+import {IPv4Addr} from "../controller/IPv4Addr";
 
 export default function App(): JSX.Element {
-    const [anonymous, setAnonymous] = useState<boolean>(true)
     const [connected, setConnected] = useState<boolean>(false)
+    const [preferPort, setPreferPort] = useState<boolean>(false)
+    const [ipv4AddrList, setIPv4AddrList] = useState<IPv4Addr[]>([])
+    const [addrDropdownOpen, setAddrDropdownOpen] = useState<boolean>(true)
+    const [addrLoading, setAddrLoading] = useState<boolean>(false)
     const [localListKey, setLocalListKey] = useState<number>(0)
     const [remoteListKey, setRemoteListKey] = useState<number>(1)
     const [drawerOpen, setDrawerOpen] = useState<boolean>(false)
@@ -61,7 +70,7 @@ export default function App(): JSX.Element {
     const handleDownload = async () => {
         if (dataState !== 'idle') return
         setDataState('download')
-        if (localList.reduce((s, x) => s || x.type === 'directory' , false)){
+        if (remoteList.reduce((s, x) => s || x.type === 'directory' , false)){
             enqueueSnackbar('Some selected objects are folders. Downloading folders is currently unsupported.')
         }
         let ok = true
@@ -92,7 +101,6 @@ export default function App(): JSX.Element {
         })
     }, [])
     useEffect(() => {
-        window.$events.onLog(console.log)
         window.$events.onRequest((verb, arg) => {
             if (arg != null) {
                 xtermRef.current.terminal.writeln(`> ${verb} ${arg}`)
@@ -108,7 +116,26 @@ export default function App(): JSX.Element {
                 }
             }
         })
+        window.$events.onDisconnect(() => {
+            setConnected(false)
+        })
+        window.$invoke('local.getPreferredMode')
+            .then(mode => {
+                setPreferPort(mode === DataConnectionMode.PortConnection)
+            })
     }, [])
+    useEffect(() => {
+        if (preferPort) {
+            setAddrLoading(true)
+            window.$invoke('local.getLocalIPv4Address')
+                .then(async (xs) => {
+                    await window.$invoke('local.setPreferredMode', DataConnectionMode.PortConnection)
+                    await window.$invoke('local.setPortAddr', xs[0].addr)
+                    return setIPv4AddrList(xs)
+                })
+                .then(() => setAddrLoading(false))
+        }
+    }, [preferPort])
 
     const tryLogin = async (args: ConnectArgs) => {
         xtermRef.current.terminal.clear()
@@ -117,7 +144,6 @@ export default function App(): JSX.Element {
         try {
             await window.$invoke('client.connect', host, port)
             await window.$invoke('client.login', args.username, args.password)
-            setAnonymous(args.username === 'anonymous')
             if (!connected) { // ONLY update FileList once, or RACE CONDITION! F**K! I spent over 5 hours on this!!!
                 setConnected(true)
             } else {
@@ -148,7 +174,7 @@ export default function App(): JSX.Element {
                          alignItems={"center"}>
                         <Button variant={"outlined"}
                                 sx={{my: 1}}
-                                disabled={!connected || anonymous || dataState !== 'idle'}
+                                disabled={!connected || dataState !== 'idle'}
                                 onClick={() => {
                                     handleUpload()
                                 }}
@@ -187,14 +213,40 @@ export default function App(): JSX.Element {
                 </AppBar>
             </Box>
             <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} ModalProps={{keepMounted: true}}>
-                <Box m={1}>
-                    <Typography variant={"h4"}>Settings</Typography>
-                    <Divider/>
+                <Box mx={2} my={1}>
+                    <Typography variant={"h4"} gutterBottom>Settings</Typography>
+                    <Typography variant={"h5"} gutterBottom>Connection mode</Typography>
                     <Stack direction={"row"} spacing={1} alignItems={"center"}>
-                        <Typography>PASV</Typography>
-                        <Switch />
-                        <Typography>PORT</Typography>
+                        <FormGroup>
+                            <Typography variant={"caption"}>Settings below take effect at your next connection.</Typography>
+                            <FormControlLabel control={<Switch value={preferPort}
+                                                               onChange={(evt) => {setPreferPort(evt.target.checked)}}/>}
+                                              label={"PORT mode"} />
+                            {preferPort ? <Autocomplete renderInput={(params) => (
+                                <TextField {...params}
+                                           onBlur={(evt) => {
+                                               const addr = evt.target.value.split(' ')[0]
+                                               if (addr) {
+                                                   console.log('setting to', addr)
+                                                   window.$invoke('local.setPreferredMode', DataConnectionMode.PortConnection)
+                                                   window.$invoke('local.setPortAddr', addr)
+                                               }
+                                           }}
+                                />)}
+                                           options={ipv4AddrList}
+                                           getOptionLabel={(x: IPv4Addr) => `${x.addr} (${x.iface})`}
+                                           loading={addrLoading}
+                                           open={addrDropdownOpen}
+                                           onOpen={() => {
+                                               setAddrDropdownOpen(true)
+                                           }}
+                                           onClose={() => {
+                                               setAddrDropdownOpen(false)
+                                           }}
+                            /> : undefined}
+                        </FormGroup>
                     </Stack>
+                    <Typography variant={"h5"} gutterBottom>Debug info</Typography>
                     <XTerm ref={xtermRef} />
                 </Box>
             </Drawer>

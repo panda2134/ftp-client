@@ -36,7 +36,12 @@ export class FTPClient {
             .pipe(new FTPResponseTransformer())
             .resume()
         this._controlConnection.on('connection', () => { this._state = ClientState.AwaitServerHello })
-        this._controlConnection.on('close', () => { this._state = ClientState.Disconnected })
+        const closeListener = () => {
+            this._state = ClientState.Disconnected
+            this.emitter.emit('disconnect')
+        }
+        this._controlConnection.on('end', closeListener)
+        this._controlConnection.on('error', closeListener)
     }
 
     setDataConnectionMode(newMode: DataConnectionMode): DataConnectionMode {
@@ -278,6 +283,7 @@ export class FTPClient {
         try {
             const statInfo = await stat(pathname) // a local pathname, absolute or relative
             if (!statInfo.isFile()) {
+                // noinspection ExceptionCaughtLocallyJS
                 throw new Error('not a file')
             }
         } catch (e) {
