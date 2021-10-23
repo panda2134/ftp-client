@@ -15,8 +15,10 @@ import {ClientState} from "../controller/Enum"
 import TopBar, {ConnectArgs} from './TopBar'
 import {XTerm} from "xterm-for-react"
 import { SnackbarProvider, VariantType, useSnackbar } from 'notistack'
+import {green} from "@mui/material/colors";
 
 export default function App(): JSX.Element {
+    const [anonymous, setAnonymous] = useState<boolean>(true)
     const [connected, setConnected] = useState<boolean>(false)
     const [localListKey, setLocalListKey] = useState<number>(0)
     const [remoteListKey, setRemoteListKey] = useState<number>(1)
@@ -85,9 +87,6 @@ export default function App(): JSX.Element {
     }
 
     useEffect(() => {
-        window.$events.onResponse(() => { window.$invoke('client.getCurrentState').then(x => {
-            setConnected(x === ClientState.Connected)
-        }) })
         window.$events.onProgress((num) => {
             setCurrentProgress(num)
         })
@@ -111,16 +110,19 @@ export default function App(): JSX.Element {
         })
     }, [])
 
-    const tryConnect = async (args: ConnectArgs) => {
+    const tryLogin = async (args: ConnectArgs) => {
         xtermRef.current.terminal.clear()
         const [host, portStr] = args.serverAddr.split(':')
         const port = Number.isInteger(parseInt(portStr)) ? parseInt(portStr) : undefined
         try {
             await window.$invoke('client.connect', host, port)
             await window.$invoke('client.login', args.username, args.password)
-            console.debug('Logged in')
-            setConnected(true)
-            setRemoteListKey(Math.random())
+            setAnonymous(args.username === 'anonymous')
+            if (!connected) { // ONLY update FileList once, or RACE CONDITION! F**K! I spent over 5 hours on this!!!
+                setConnected(true)
+            } else {
+                setRemoteListKey(Math.random())
+            }
         } catch (e) {
             const error = `Connection to ${host}:${port ?? 21} failed: ${e}`
             console.error(error)
@@ -131,7 +133,7 @@ export default function App(): JSX.Element {
     return (
         <Container maxWidth={false} disableGutters={true}>
             <Box height={"100vh"} display={"flex"} flexDirection={"column"}>
-                <TopBar connectCallback={tryConnect} drawerCallback={() => {setDrawerOpen(true)}}/>
+                <TopBar connectCallback={tryLogin} drawerCallback={() => {setDrawerOpen(true)}}/>
                 <Box flexShrink={1} flexGrow={1} overflow={"hidden"}
                      display={"flex"} flexDirection={"row"} justifyContent={"center"} alignItems={"center"}
                      sx={{ px: 2, py: 2 }}>
@@ -146,14 +148,14 @@ export default function App(): JSX.Element {
                          alignItems={"center"}>
                         <Button variant={"outlined"}
                                 sx={{my: 1}}
-                                disabled={connected && dataState !== 'idle'}
+                                disabled={!connected || anonymous || dataState !== 'idle'}
                                 onClick={() => {
                                     handleUpload()
                                 }}
                         >≫</Button>
                         <Button variant={"outlined"}
                                 sx={{my: 1}}
-                                disabled={connected && dataState !== 'idle'}
+                                disabled={!connected || dataState !== 'idle'}
                                 onClick={() => {
                                     handleDownload()
                                 }}
@@ -175,11 +177,11 @@ export default function App(): JSX.Element {
                             <span>{ dataState==='idle' ? "Idle" :
                                 (dataState==='upload' ? `Uploading ${currentFile?.filename}...` : `Downloading ${currentFile?.filename}...`)
                             }</span>
-                            <LinearProgress
-                                color={"secondary"}
+                            {connected && dataState!=='idle' ? <LinearProgress
+                                color={"warning"}
                                 variant={"determinate"}
                                 value={currentProgress / (currentFile?.size ?? 1) * 100}
-                                sx={{ width: '40%' }}/>
+                                sx={{width: '40%'}}/> : undefined}
                         </Box>
                     </Toolbar>
                 </AppBar>

@@ -149,11 +149,11 @@ class FTPClient {
     async renameFile(prevName, newName) {
         const [prevEncoded, newEncoded] = [prevName, newName].map(encodePathname);
         const lastLineRenameFrom = await this._writeCmdAndGrabLastLine('RNFR', prevEncoded);
-        if (lastLineRenameFrom.startsWith('3')) {
+        if (!lastLineRenameFrom.startsWith('3')) {
             throw new ServerRejectError('3xx expected in RNFR');
         }
         const lastLineRenameTo = await this._writeCmdAndGrabLastLine('RNTO', newEncoded);
-        if (lastLineRenameTo.startsWith('2')) {
+        if (!lastLineRenameTo.startsWith('2')) {
             throw new ServerRejectError('2xx expected in RNTO');
         }
     }
@@ -249,19 +249,21 @@ class FTPClient {
             return lines && lines.length ? (0, ListCmdParser_1.default)(lines) : [[], 'MS-DOS'];
         });
     }
-    get(pathname) {
+    async get(pathname) {
         const fileStream = (0, fs_1.createWriteStream)('./' + path.basename(pathname));
-        return this._executeWithDataConnection(async (connPromise) => {
+        await this._executeWithDataConnection(async (connPromise) => {
             let lastLine = await this._writeCmdAndGrabLastLine('RETR', encodePathname(pathname));
             if (!lastLine?.startsWith('1')) {
                 fileStream.close();
-                return false;
+                throw new ServerRejectError(`RETR rejected with: ${lastLine}`);
             }
             const controlResponseEndMark = this._getResponse();
-            const conn = await connPromise;
+            await connPromise;
             await new Promise(resolve => fileStream.on('close', resolve));
             lastLine = (await controlResponseEndMark).at(-1);
-            return lastLine?.startsWith('2') || false;
+            if (!lastLine?.startsWith('2')) {
+                throw new ServerRejectError(`RETR rejected (after download) with: ${lastLine}`);
+            }
         }, (conn) => {
             let totalLength = 0;
             conn.pipe(fileStream);
@@ -271,18 +273,20 @@ class FTPClient {
     async put(pathname) {
         try {
             const statInfo = await (0, promises_1.stat)(pathname); // a local pathname, absolute or relative
-            if (!statInfo.isFile())
-                return false;
+            if (!statInfo.isFile()) {
+                throw new Error('not a file');
+            }
         }
         catch (e) {
-            return false;
+            throw new Error('stat() failed');
         }
-        return this._executeWithDataConnection(async (connPromise) => {
+        await this._executeWithDataConnection(async (connPromise) => {
             let conn = undefined;
             try {
                 let lastLine = await this._writeCmdAndGrabLastLine('STOR', encodePathname(pathname));
                 if (!lastLine.startsWith('1')) {
-                    return false;
+                    // noinspection ExceptionCaughtLocallyJS
+                    throw new ServerRejectError(`STOR rejected with: "${lastLine}"`);
                 }
                 conn = await connPromise;
                 const fileStream = (0, fs_1.createReadStream)(pathname);
@@ -294,7 +298,7 @@ class FTPClient {
             }
             catch (e) {
                 console.error(e);
-                return false;
+                throw e;
             }
         });
     }

@@ -3,11 +3,11 @@ import {useEffect, useLayoutEffect, useState} from 'react'
 import {useDebounce} from '@react-hook/debounce'
 import {
     Box,
-    Breadcrumbs,
+    Breadcrumbs, Button,
     Card,
     CardContent,
     CardHeader,
-    Checkbox, Dialog, DialogTitle,
+    Checkbox, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
     Divider,
     LinearProgress,
     Link,
@@ -21,7 +21,7 @@ import {
     TableCell,
     TableContainer,
     TableHead,
-    TableRow,
+    TableRow, TextField,
     Typography
 } from "@mui/material"
 import {
@@ -31,7 +31,7 @@ import {
     DriveFileRenameOutline,
     Folder,
     InsertDriveFile,
-    NavigateNext,
+    NavigateNext, SignalWifiConnectedNoInternet4,
     Storage
 } from "@mui/icons-material"
 import {IListFileInfo} from "../controller/ListCmdParser"
@@ -50,11 +50,13 @@ export interface IListFileInfoEx extends IListFileInfo {
 }
 
 const FileList: React.FunctionComponent<FileListProps> = (props) => {
-    const [rmDialogOpen, setRmDialogOpen] = useState<boolean>()
-    const [mvDialogOpen, setMvDialogOpen] = useState<boolean>()
+    const [rmDialogOpen, setRmDialogOpen] = useState<boolean>(false)
+    const [mvDialogOpen, setMvDialogOpen] = useState<boolean>(false)
+    const [menuFileIndex, setMenuFileIndex] = useState<number|undefined>(undefined)
     const [anchorPos, setAnchorPos] = useState<null | [number, number]>(null)
     const [dir, setDir] = useState<string | undefined>()
     const [list, setList] = useState<readonly IListFileInfoEx[]>()
+    const [newFilename, setNewFilename] = useState<string>(list ? (list[menuFileIndex]?.filename ?? '') : '')
     const [loading, setLoading] = useDebounce<boolean>(true)
     const {enqueueSnackbar} = useSnackbar()
 
@@ -68,7 +70,7 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
         }
         if (props.connected) {
             setLoading(true)
-            listFolder()
+            return listFolder()
                 .then(x => x.sort((a, b) => (a.type === 'directory' ? 0 : 1) - (b.type === 'directory' ? 0 : 1)))
                 .then(x => setList(x))
                 .catch((x) => {
@@ -76,6 +78,7 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
                 })
         } else {
             setList([])
+            return Promise.resolve()
         }
     }
     useLayoutEffect(() => {
@@ -89,7 +92,7 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
         }
         if (props.connected) {
             await getCurrentFolder().then(x => setDir(x))
-            updateList()
+            await updateList()
             setLoading(false)
         } else {
             setDir(undefined)
@@ -156,7 +159,7 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
     }
     useEffect(() => {
         updateCwd()
-    }, [props.connected, props.type])
+    }, [props.connected])
 
     const header = <CardHeader avatar={props.type === 'local' ? <Storage/> : <Cloud/>}
                                title={props.type === 'local' ? 'Local' : 'Remote'}
@@ -164,9 +167,10 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
 
     let content: JSX.Element
     if (!props.connected) {
-        content = (<CardContent>
-            <Box display={"flex"} alignItems={"center"} justifyContent={"center"}>
-                <Typography variant={"h4"} color={"text.info"}>Not Connected</Typography>
+        content = (<CardContent sx={{ flexGrow: 1 }}>
+            <Box display={"flex"} flexDirection={"column"} alignItems={"center"} justifyContent={"center"} height={"100%"}>
+                <SignalWifiConnectedNoInternet4 sx={{ fontSize: '64px' }} />
+                <Typography variant={"h6"} color={"grey"}>Not Connected</Typography>
             </Box>
         </CardContent>)
     } else {
@@ -190,6 +194,10 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
                     <TableRow key={file.filename} onContextMenu={(evt) => {
                         evt.preventDefault()
                         if (anchorPos === null) {
+                            const newList = Array.from(list)
+                            newList[index].selected = true
+                            setList(newList)
+                            setMenuFileIndex(index)
                             setAnchorPos([evt.clientX, evt.clientY])
                         } else {
                             setAnchorPos(null)
@@ -284,26 +292,59 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
                       setAnchorPos(null)
                   }}
             >
-                <MenuItem>
+                <MenuItem onClick={() => {
+                    setAnchorPos(null)
+                    setRmDialogOpen(true)
+                }}>
                     <ListItemIcon><DeleteForever fontSize={"small"}/></ListItemIcon>
                     <ListItemText>Delete</ListItemText>
                 </MenuItem>
-                <MenuItem>
+                <MenuItem onClick={() => {
+                    const newList = Array.from(list)
+                    for (let i = 0; i < newList.length; i++) newList[i].selected = false
+                    newList[menuFileIndex].selected = true
+                    setList(newList)
+                    setAnchorPos(null)
+                    setMvDialogOpen(true)
+                }}>
                     <ListItemIcon><DriveFileRenameOutline fontSize={"small"}/></ListItemIcon>
                     <ListItemText>Rename...</ListItemText>
                 </MenuItem>
             </Menu>
-            <Dialog open={rmDialogOpen} onClose={() => { setRmDialogOpen(false) }}>
+            <Dialog open={rmDialogOpen} onClose={() => setRmDialogOpen(false)}>
                 <DialogTitle>{"Remove the selected files?"}</DialogTitle>
+                <DialogContent>
+                    <DialogContentText>
+                        You will lose those files forever (a long time)!
+                    </DialogContentText>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setRmDialogOpen(false)}>No</Button>
+                    <Button onClick={() => { setRmDialogOpen(false); tryRemove() }} autoFocus>Yes</Button>
+                </DialogActions>
             </Dialog>
             <Dialog open={mvDialogOpen} onClose={() => { setMvDialogOpen(false) }}>
-
+                <DialogTitle>{"Rename the selected file"}</DialogTitle>
+                <DialogContent>
+                    <TextField autoFocus
+                               margin={"dense"}
+                               fullWidth
+                               variant={"standard"}
+                               label={"New filename"}
+                               value={newFilename}
+                               onChange={(evt) => setNewFilename(evt.target.value)}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setMvDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={() => { setMvDialogOpen(false); tryRename(newFilename) }}>Rename</Button>
+                </DialogActions>
             </Dialog>
         </CardContent>)
     }
 
     return (
-        <Card elevation={1} sx={Object.assign({
+        <Card sx={Object.assign({
             display: 'flex', flexDirection: 'column'
         }, props.sx)}>
             {header}
