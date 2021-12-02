@@ -14,6 +14,7 @@ declare global {
     interface Window {
         $invoke(channel: 'local.setPreferredMode', newMode: DataConnectionMode): Promise<void>
         $invoke(channel: 'local.getPreferredMode'): Promise<DataConnectionMode>
+        $invoke(channel: 'local.mkdir', dir: string): Promise<void>
         $invoke(channel: 'local.rmdir', dir: string): Promise<void>
         $invoke(channel: 'local.rm', path: string): Promise<void>
         $invoke(channel: 'local.mv', pathOld: string, pathNew: string): Promise<void>

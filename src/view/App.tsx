@@ -2,7 +2,7 @@ import * as React from 'react'
 import {useEffect, useRef, useState} from 'react'
 import {
     AppBar,
-    Autocomplete,
+    Autocomplete, Backdrop,
     Box,
     Button,
     Container,
@@ -22,6 +22,7 @@ import TopBar, {ConnectArgs} from './TopBar'
 import {XTerm} from "xterm-for-react"
 import {useSnackbar} from 'notistack'
 import {IPv4Addr} from "../controller/IPv4Addr";
+import {CircularProgress} from "@material-ui/core";
 
 export default function App(): JSX.Element {
     const [connected, setConnected] = useState<boolean>(false)
@@ -250,5 +251,10 @@ export default function App(): JSX.Element {
                     <XTerm ref={xtermRef} />
                 </Box>
             </Drawer>
+            <Backdrop open={connected && dataState !== 'idle'}
+                      sx={{ zIndex: (theme) => theme.zIndex.appBar - 1 }}
+            >
+                <CircularProgress color={"secondary"} />
+            </Backdrop>
         </Container>)
 }

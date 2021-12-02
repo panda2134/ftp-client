@@ -26,7 +26,7 @@ import {
 } from "@mui/material"
 import {
     ArrowUpward,
-    Cloud,
+    Cloud, CreateNewFolder,
     DeleteForever,
     DriveFileRenameOutline,
     Folder,
@@ -52,11 +52,13 @@ export interface IListFileInfoEx extends IListFileInfo {
 const FileList: React.FunctionComponent<FileListProps> = (props) => {
     const [rmDialogOpen, setRmDialogOpen] = useState<boolean>(false)
     const [mvDialogOpen, setMvDialogOpen] = useState<boolean>(false)
+    const [mkdDialogOpen, setMkdDialogOpen] = useState<boolean>(false)
     const [menuFileIndex, setMenuFileIndex] = useState<number|undefined>(undefined)
     const [anchorPos, setAnchorPos] = useState<null | [number, number]>(null)
     const [dir, setDir] = useState<string | undefined>()
     const [list, setList] = useState<readonly IListFileInfoEx[]>()
     const [newFilename, setNewFilename] = useState<string>(list ? (list[menuFileIndex]?.filename ?? '') : '')
+    const [newFolderName, setNewFolderName] = useState<string>('new-folder')
     const [loading, setLoading] = useDebounce<boolean>(true)
     const {enqueueSnackbar} = useSnackbar()
 
@@ -114,6 +116,23 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
             await updateCwd()
         } catch (e) {
             enqueueSnackbar(`Failed to change directory to ${x}`, {variant: 'error'})
+            setLoading(false)
+        }
+    }
+    const tryMkd = async (x: string) => {
+        if (props.type === 'remote' && loading) {
+            return
+        }
+        setLoading(true)
+        try {
+            if (props.type === 'local') {
+                await window.$invoke('local.mkdir', x)
+            } else {
+                await window.$invoke('client.mkdir', x)
+            }
+            await updateCwd()
+        } catch (e) {
+            enqueueSnackbar(`Failed to make directory ${x}`, {variant: 'error'})
             setLoading(false)
         }
     }
@@ -300,6 +319,13 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
                     <ListItemText>Delete</ListItemText>
                 </MenuItem>
                 <MenuItem onClick={() => {
+                    setAnchorPos(null)
+                    setMkdDialogOpen(true)
+                }}>
+                    <ListItemIcon><CreateNewFolder fontSize={"small"} /></ListItemIcon>
+                    <ListItemText>New Folder...</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => {
                     const newList = Array.from(list)
                     for (let i = 0; i < newList.length; i++) newList[i].selected = false
                     newList[menuFileIndex].selected = true
@@ -338,6 +364,23 @@ const FileList: React.FunctionComponent<FileListProps> = (props) => {
                 <DialogActions>
                     <Button onClick={() => setMvDialogOpen(false)}>Cancel</Button>
                     <Button onClick={() => { setMvDialogOpen(false); tryRename(newFilename) }}>Rename</Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog open={mkdDialogOpen} onClose={() => { setMkdDialogOpen(false) }}>
+                <DialogTitle>{"Create a new folder"}</DialogTitle>
+                <DialogContent>
+                    <TextField autoFocus
+                               margin={"dense"}
+                               fullWidth
+                               variant={"standard"}
+                               label={"New folder name"}
+                               value={newFolderName}
+                               onChange={(evt) => setNewFolderName(evt.target.value)}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setMkdDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={() => { setMkdDialogOpen(false); tryMkd(newFolderName) }}>Create</Button>
                 </DialogActions>
             </Dialog>
         </CardContent>)

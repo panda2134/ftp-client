@@ -50,6 +50,7 @@ export function registerIPC(win: BrowserWindow): void {
     ipcMain.handle('local.getLocalDir', () => path.normalize(process.cwd()))
     ipcMain.handle('local.changeLocalDir', (event, dir: string) => { process.chdir(dir) })
     ipcMain.handle('local.listLocalDir', () => listLocalDir())
+    ipcMain.handle('local.mkdir', (event, x: string) => fs.mkdir(x))
     ipcMain.handle('local.rmdir', (event, dir: string) => fs.rmdir(dir) )
     ipcMain.handle('local.rm', (event, path: string) => fs.unlink(path))
     ipcMain.handle('local.mv', (event, pathOld: string, pathNew: string) => fs.rename(pathOld, pathNew))
